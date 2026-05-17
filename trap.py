@@ -22,7 +22,6 @@ async def main():
         await bot.load_extension("trap")
         await bot.start(TOKEN)
 
-asyncio.run(main())
 
 CONFIG_FILE = "trap_channels.json"
 
