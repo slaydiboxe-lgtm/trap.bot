@@ -96,69 +96,73 @@ class TrapChannel(commands.Cog):
             except Exception as e:
                 print(f"Error in {channel.name}: {e}")
 
-    # === LISTENER ===
 # === LISTENER ===
 @commands.Cog.listener()
 async def on_message(self, message: discord.Message):
 
-    # Allow commands to work
-    await self.bot.process_commands(message)
-
+    # Ignore bots
     if message.author.bot:
         return
 
+    # Ignore DMs
     if not message.guild:
         return
 
-    # Ignore slash/prefix commands
+    # Allow commands
+    await self.bot.process_commands(message)
+
+    # Ignore commands
     if message.content.startswith(("!", "/", "?")):
         return
 
+    print(f"Message detected in: {message.channel.name}")
+
     # Check trap channel
     if not self.is_trap_channel(message.guild.id, message.channel.id):
+        print("Not a trap channel")
         return
 
+    print("TRAP CHANNEL DETECTED")
+
+    user = message.author
+
+    # Ignore admins
+    if user.guild_permissions.administrator:
+        print("Admin ignored")
+        return
+
+    # Delete message
     try:
-        user = message.author
-
-        # Ignore admins
-        if user.guild_permissions.administrator:
-            print(f"Admin ignored: {user}")
-            return
-
-        print(f"Trap triggered by: {user}")
-
-        # Delete message
         await message.delete()
+        print("Message deleted")
 
-        # Delete recent messages
-        await self.purge_user_messages(message.guild, user)
+    except Exception as e:
+        print(f"Delete failed: {e}")
 
-        # Timeout user
-        try:
-            await user.timeout(
-                timedelta(hours=48),
-                reason="Trap channel triggered"
-            )
+    # Timeout user
+    try:
+        await user.timeout(
+            timedelta(hours=48),
+            reason="Trap channel triggered"
+        )
 
-            print(f"Timed out: {user}")
+        print("User timed out")
 
-        except Exception as e:
-            print(f"Timeout error: {e}")
+    except Exception as e:
+        print(f"Timeout failed: {e}")
 
-        # Warning message
+    # Warning message
+    try:
         warn_msg = await message.channel.send(
             f"🚫 {user.mention} DO NOT SEND MESSAGES HERE!"
         )
 
-        await asyncio.sleep(8)
+        await asyncio.sleep(5)
         await warn_msg.delete()
 
-    except discord.Forbidden as e:
-        print(f"Missing permissions: {e}")
-
     except Exception as e:
-        print(f"General error: {e}")
+        print(f"Warning failed: {e}")
+
         
     def cog_unload(self):
         pass
