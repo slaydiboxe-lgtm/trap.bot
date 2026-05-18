@@ -98,13 +98,15 @@ class TrapChannel(commands.Cog):
 
     # === LISTENER ===
 # === LISTENER ===
-    @commands.Cog.listener()
+   @commands.Cog.listener()
 async def on_message(self, message: discord.Message):
 
-    # Allow commands to work
-    await self.bot.process_commands(message)
-
     if message.author.bot or not message.guild:
+        return
+
+    # Allow bot commands
+    if message.content.startswith(("!", "/", "?")):
+        await self.bot.process_commands(message)
         return
 
     if not self.is_trap_channel(message.guild.id, message.channel.id):
