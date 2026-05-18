@@ -3,169 +3,152 @@ from discord.ext import commands
 import json
 import os
 import asyncio
-from datetime import timedelta, datetime, timezone
-TOKEN = os.getenv("DISCORD_TOKEN")
-
-intents = discord.Intents.all()
-
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents
-)
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-
-async def main():
-    async with bot:
-        await bot.load_extension("trap")
-        await bot.start(TOKEN)
-
+from datetime import timedelta
 
 CONFIG_FILE = "trap_channels.json"
 
+
 class TrapChannel(commands.Cog):
+
     def __init__(self, bot):
         self.bot = bot
         self.config = self.load_config()
 
-    # === CONFIG LOAD / SAVE ===
+    # LOAD CONFIG
     def load_config(self):
-        default_config = {"servers": {}}
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r") as f:
-                    return json.load(f)
-            except json.JSONDecodeError:
-                return default_config
-        return default_config
 
+        if not os.path.exists(CONFIG_FILE):
+            return {"servers": {}}
+
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+
+    # SAVE CONFIG
     def save_config(self):
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, indent=4, ensure_ascii=False)
 
-    # === CHECK CHANNEL ===
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(self.config, f, indent=4)
+
+    # CHECK TRAP CHANNEL
     def is_trap_channel(self, guild_id, channel_id):
-        return str(channel_id) in self.config["servers"].get(str(guild_id), {}).get("trap_channels", [])
 
-    # === COMMANDS ===
-    @commands.hybrid_command(name="settrapchannel", description="Set a trap channel")
+        guild_id = str(guild_id)
+        channel_id = str(channel_id)
+
+        return (
+            guild_id in self.config["servers"]
+            and channel_id in self.config["servers"][guild_id]["trap_channels"]
+        )
+
+    # SET TRAP CHANNEL
+    @commands.hybrid_command(name="settrapchannel")
     @commands.has_permissions(administrator=True)
-    async def set_trap_channel(self, ctx: commands.Context, channel: discord.TextChannel):
+    async def settrapchannel(self, ctx, channel: discord.TextChannel):
+
         guild_id = str(ctx.guild.id)
 
         if guild_id not in self.config["servers"]:
-            self.config["servers"][guild_id] = {"trap_channels": []}
+            self.config["servers"][guild_id] = {
+                "trap_channels": []
+            }
 
         if str(channel.id) not in self.config["servers"][guild_id]["trap_channels"]:
-            self.config["servers"][guild_id]["trap_channels"].append(str(channel.id))
-            self.save_config()
-            await ctx.send(f"✅ {channel.mention} is now set as a trap channel.")
-        else:
-            await ctx.send(f"⚠️ {channel.mention} is already a trap channel.")
 
-    @commands.hybrid_command(name="removetrapchannel", description="Remove a trap channel")
+            self.config["servers"][guild_id]["trap_channels"].append(
+                str(channel.id)
+            )
+
+            self.save_config()
+
+            await ctx.send(
+                f"✅ {channel.mention} set as trap channel"
+            )
+
+        else:
+            await ctx.send("Channel already added")
+
+    # REMOVE TRAP CHANNEL
+    @commands.hybrid_command(name="removetrapchannel")
     @commands.has_permissions(administrator=True)
-    async def remove_trap_channel(self, ctx: commands.Context, channel: discord.TextChannel):
+    async def removetrapchannel(self, ctx, channel: discord.TextChannel):
+
         guild_id = str(ctx.guild.id)
 
-        if guild_id in self.config["servers"]:
-            if str(channel.id) in self.config["servers"][guild_id]["trap_channels"]:
-                self.config["servers"][guild_id]["trap_channels"].remove(str(channel.id))
-                self.save_config()
-                await ctx.send(f"❌ {channel.mention} removed from trap channels.")
-                return
+        if (
+            guild_id in self.config["servers"]
+            and str(channel.id) in self.config["servers"][guild_id]["trap_channels"]
+        ):
 
-        await ctx.send("⚠️ This channel is not configured as a trap channel.")
+            self.config["servers"][guild_id]["trap_channels"].remove(
+                str(channel.id)
+            )
 
-    # === DELETE USER MESSAGES IN LAST 10 MIN ===
-    async def purge_user_messages(self, guild, user):
-        now = datetime.now(timezone.utc)
-        limit_time = now - timedelta(minutes=10)
+            self.save_config()
 
-        for channel in guild.text_channels:
-            try:
-                def check(msg):
-                    return msg.author.id == user.id and msg.created_at > limit_time
+            await ctx.send(
+                f"❌ Removed {channel.mention}"
+            )
 
-                await channel.purge(limit=500, check=check)
+        else:
+            await ctx.send("Channel not found")
 
-            except discord.Forbidden:
-                continue
-            except Exception as e:
-                print(f"Error in {channel.name}: {e}")
+    # MESSAGE LISTENER
+    @commands.Cog.listener()
+    async def on_message(self, message):
 
-# === LISTENER ===
-@commands.Cog.listener()
-async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
 
-    # Ignore bots
-    if message.author.bot:
-        return
+        if not message.guild:
+            return
 
-    # Ignore DMs
-    if not message.guild:
-        return
+        await self.bot.process_commands(message)
 
-    # Allow commands
-    await self.bot.process_commands(message)
+        # Ignore commands
+        if message.content.startswith(("!", "/", "?")):
+            return
 
-    # Ignore commands
-    if message.content.startswith(("!", "/", "?")):
-        return
+        # Check trap channel
+        if not self.is_trap_channel(
+            message.guild.id,
+            message.channel.id
+        ):
+            return
 
-    print(f"Message detected in: {message.channel.name}")
+        user = message.author
 
-    # Check trap channel
-    if not self.is_trap_channel(message.guild.id, message.channel.id):
-        print("Not a trap channel")
-        return
+        # Ignore admins
+        if user.guild_permissions.administrator:
+            return
 
-    print("TRAP CHANNEL DETECTED")
+        # DELETE MESSAGE
+        try:
+            await message.delete()
+        except:
+            pass
 
-    user = message.author
+        # TIMEOUT USER
+        try:
+            await user.timeout(
+                timedelta(hours=48),
+                reason="Trap channel triggered"
+            )
+        except Exception as e:
+            print(e)
 
-    # Ignore admins
-    if user.guild_permissions.administrator:
-        print("Admin ignored")
-        return
+        # WARNING MESSAGE
+        try:
 
-    # Delete message
-    try:
-        await message.delete()
-        print("Message deleted")
+            warn = await message.channel.send(
+                f"🚫 {user.mention} DO NOT SEND MESSAGES HERE!"
+            )
 
-    except Exception as e:
-        print(f"Delete failed: {e}")
+            await asyncio.sleep(5)
 
-    # Timeout user
-    try:
-        await user.timeout(
-            timedelta(hours=48),
-            reason="Trap channel triggered"
-        )
+            await warn.delete()
 
-        print("User timed out")
-
-    except Exception as e:
-        print(f"Timeout failed: {e}")
-
-    # Warning message
-    try:
-        warn_msg = await message.channel.send(
-            f"🚫 {user.mention} DO NOT SEND MESSAGES HERE!"
-        )
-
-        await asyncio.sleep(5)
-        await warn_msg.delete()
-
-    except Exception as e:
-        print(f"Warning failed: {e}")
-
-        
-    def cog_unload(self):
-        pass
+        except:
+            pass
 
 
 async def setup(bot):
