@@ -98,15 +98,17 @@ class TrapChannel(commands.Cog):
 
     # === LISTENER ===
 # === LISTENER ===
-   @commands.Cog.listener()
+@commands.Cog.listener()
 async def on_message(self, message: discord.Message):
+
+    # Allow commands
+    await self.bot.process_commands(message)
 
     if message.author.bot or not message.guild:
         return
 
-    # Allow bot commands
+    # Ignore commands
     if message.content.startswith(("!", "/", "?")):
-        await self.bot.process_commands(message)
         return
 
     if not self.is_trap_channel(message.guild.id, message.channel.id):
@@ -117,16 +119,16 @@ async def on_message(self, message: discord.Message):
 
         # Ignore admins
         if user.guild_permissions.administrator:
-            print(f"Admin : {user}")
+            print(f"Admin: {user}")
             return
 
         # Delete message
         await message.delete()
 
-        # Delete last 10 minutes messages
+        # Delete recent messages
         await self.purge_user_messages(message.guild, user)
 
-        # 48h timeout
+        # Timeout user
         try:
             await user.timeout(
                 timedelta(hours=48),
@@ -145,9 +147,10 @@ async def on_message(self, message: discord.Message):
 
     except discord.Forbidden:
         print("Missing permissions.")
+
     except Exception as e:
         print(f"Error: {e}")
-
+        
     def cog_unload(self):
         pass
 
