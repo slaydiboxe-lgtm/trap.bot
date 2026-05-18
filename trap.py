@@ -101,16 +101,20 @@ class TrapChannel(commands.Cog):
 @commands.Cog.listener()
 async def on_message(self, message: discord.Message):
 
-    # Allow commands
+    # Allow commands to work
     await self.bot.process_commands(message)
 
-    if message.author.bot or not message.guild:
+    if message.author.bot:
         return
 
-    # Ignore commands
+    if not message.guild:
+        return
+
+    # Ignore slash/prefix commands
     if message.content.startswith(("!", "/", "?")):
         return
 
+    # Check trap channel
     if not self.is_trap_channel(message.guild.id, message.channel.id):
         return
 
@@ -119,8 +123,10 @@ async def on_message(self, message: discord.Message):
 
         # Ignore admins
         if user.guild_permissions.administrator:
-            print(f"Admin: {user}")
+            print(f"Admin ignored: {user}")
             return
+
+        print(f"Trap triggered by: {user}")
 
         # Delete message
         await message.delete()
@@ -134,6 +140,9 @@ async def on_message(self, message: discord.Message):
                 timedelta(hours=48),
                 reason="Trap channel triggered"
             )
+
+            print(f"Timed out: {user}")
+
         except Exception as e:
             print(f"Timeout error: {e}")
 
@@ -145,11 +154,11 @@ async def on_message(self, message: discord.Message):
         await asyncio.sleep(8)
         await warn_msg.delete()
 
-    except discord.Forbidden:
-        print("Missing permissions.")
+    except discord.Forbidden as e:
+        print(f"Missing permissions: {e}")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"General error: {e}")
         
     def cog_unload(self):
         pass
